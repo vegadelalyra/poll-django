@@ -4,7 +4,7 @@ from django.urls import reverse
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import Question
+from .models import Question, Choice
 
 # Create your tests here.
 class QuestionModelTests(TestCase):
@@ -40,7 +40,7 @@ class QuestionModelTests(TestCase):
         self.assertIs(recent_question.was_published_recently(), True)
 
 
-def create_question(question_text, days):
+def create_question(question_text, days=-0.5, without_choice=False):
     """
     Create a question with the given "question_text"
     and published the given number of 'days' offset
@@ -48,7 +48,12 @@ def create_question(question_text, days):
     positive for questions that have yet to be published).
     """
     time = timezone.now() + datetime.timedelta(days=days)
-    return Question.objects.create(question_text=question_text, pub_date=time)
+    question = Question.objects.create(question_text=question_text, pub_date=time)
+
+    if not without_choice:
+        Choice.objects.create(question=question, choice_text='A default choice.')
+
+    return question
 
 
 class QuestionIndexViewTests(TestCase):
@@ -103,6 +108,23 @@ class QuestionIndexViewTests(TestCase):
         response = self.client.get(reverse('poll:index'))
         self.assertQuerySetEqual(response.context['latest_question_list'], [question2, question1])
 
+    def test_questions_without_choices(self):
+        """
+        Questions without choices aren't displayed on the index page.
+        """ 
+        question = create_question(question_text='Question without choices.', without_choice=True)
+        response = self.client.get(reverse('poll:index'))
+        self.assertQuerySetEqual(response.context['latest_question_list'], [])
+        self.assertQuerySetEqual(question.choice_set.all(), [])
+        
+    def test_questions_with_choices(self):
+        """
+        Questions with choices are displayed on the index page.
+        """ 
+        question = create_question(question_text='Question with choices.')
+        response = self.client.get(reverse('poll:index'))
+        self.assertQuerySetEqual(response.context['latest_question_list'], [question])
+        self.assertGreater(len(question.choice_set.all()), 0)
     
 class QuestionDetailViewTests(TestCase):
     def test_future_question(self):
